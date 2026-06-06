@@ -892,7 +892,7 @@ export class EvolutionWhatsAppProvider extends BaseChannelProvider {
     };
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 45000);
 
     const requestBody = body ? JSON.stringify(body) : undefined;
     this.log('info', `${method} ${endpoint}`);

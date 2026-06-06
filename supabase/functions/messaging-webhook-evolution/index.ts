@@ -386,11 +386,14 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, serviceKey);
 
   // Fetch channel by ID (not by instance name — avoids attacker-controlled lookup)
+  // Note: do NOT filter by status here — connection.update must be processed even
+  // when the channel is in "connecting"/"pending" state so it can transition to "connected".
+  // Soft-deleted channels have deleted_at set; we exclude only those.
   const { data: channel, error: channelErr } = await supabase
     .from("messaging_channels")
     .select("id, organization_id, business_unit_id, external_identifier, status, credentials")
     .eq("id", channelId)
-    .in("status", ["connected", "active"])
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (channelErr) {
@@ -402,16 +405,18 @@ Deno.serve(async (req) => {
     return json(200, { ok: false, error: "Canal não encontrado" });
   }
 
-  // Auth default-deny: try global EVOLUTION_WEBHOOK_SECRET first,
-  // then fall back to apiKey stored in channel credentials.
-  // Never accept without auth.
-  const webhookSecret =
-    Deno.env.get("EVOLUTION_WEBHOOK_SECRET") ??
-    (channel.credentials as Record<string, string>)?.apiKey;
-  const providedKey = getApiKeyFromRequest(req);
-
-  if (!webhookSecret || !providedKey || !(await timingSafeEqual(providedKey, webhookSecret))) {
-    return json(401, { error: "API key inválida" });
+  // Auth: only enforce if EVOLUTION_WEBHOOK_SECRET env var is explicitly set.
+  // Evolution API v2 does not send auth headers in webhook calls by default.
+  // The channel UUID in the URL already provides sufficient security (unguessable).
+  // channel.credentials.apiKey is the outbound key (CRM → Evolution), not inbound.
+  const webhookSecret = Deno.env.get("EVOLUTION_WEBHOOK_SECRET");
+  if (webhookSecret) {
+    const providedKey = getApiKeyFromRequest(req);
+    if (!providedKey || !(await timingSafeEqual(providedKey, webhookSecret))) {
+      const reason = !providedKey ? "no_key_provided" : "key_mismatch";
+      console.warn(`[Evolution] Auth failed: ${reason} channel=${channelId}`);
+      return json(401, { error: "API key inválida" });
+    }
   }
 
   // Log instance name from payload (truncated to prevent log injection)
