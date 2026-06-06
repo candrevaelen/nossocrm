@@ -20,7 +20,6 @@ import type {
   SendMessageResult,
   SendTemplateParams,
   WebhookHandlerResult,
-  WebhookEventData,
   MessageReceivedEvent,
   StatusUpdateEvent,
   ErrorEvent,
@@ -259,7 +258,7 @@ export class MetaCloudWhatsAppProvider extends BaseChannelProvider {
   private accessToken: string = '';
   private wabaId?: string;
   private appSecret?: string;
-  private verifyToken?: string;
+
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -273,7 +272,6 @@ export class MetaCloudWhatsAppProvider extends BaseChannelProvider {
     this.accessToken = credentials.accessToken;
     this.wabaId = credentials.wabaId;
     this.appSecret = credentials.appSecret;
-    this.verifyToken = credentials.verifyToken;
 
     this.log('info', 'Meta Cloud API provider initialized', {
       phoneNumberId: this.phoneNumberId,
@@ -890,13 +888,6 @@ export class MetaCloudWhatsAppProvider extends BaseChannelProvider {
         return false;
       }
 
-      // In Edge/Browser environment, we need SubtleCrypto
-      // For Node.js, we'd use crypto.createHmac
-      // This is a simplified check - in production, implement proper HMAC verification
-      const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
-
-      // Note: Full implementation would use crypto.createHmac in Node.js
-      // or SubtleCrypto in Edge Functions. For now, return true with warning.
       this.log('warn', 'Signature verification not fully implemented');
       return true;
     } catch (error) {
@@ -957,22 +948,30 @@ export class MetaCloudWhatsAppProvider extends BaseChannelProvider {
       url += `?${params.toString()}`;
     }
 
-    const response = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
-    const data = await response.json();
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
 
-    if (!response.ok && !data.error) {
-      throw new Error(`Meta API request failed: ${response.status}`);
+      const data = await response.json();
+
+      if (!response.ok && !data.error) {
+        throw new Error(`Meta API request failed: ${response.status}`);
+      }
+
+      return data as T;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return data as T;
   }
 }
 

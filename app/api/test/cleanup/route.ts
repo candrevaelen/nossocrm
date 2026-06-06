@@ -20,11 +20,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const supabase = await createClient();
-    const body = await request.json().catch(() => ({}));
-    const { keepChannels = true, keepBoards = true } = body as {
-      keepChannels?: boolean;
-      keepBoards?: boolean;
-    };
+    await request.json().catch(() => ({}));
 
     // Get user
     const {
@@ -36,13 +32,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Get profile
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('organization_id')
       .eq('id', user.id)
       .single();
 
-    if (!profile?.organization_id) {
+    if (profileError || !profile?.organization_id) {
       return NextResponse.json({ error: 'No organization' }, { status: 404 });
     }
 

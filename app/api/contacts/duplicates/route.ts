@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/server';
  * GET /api/contacts/duplicates
  * Retorna grupos de contatos duplicados da organização.
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     const supabase = await createClient();
 
@@ -18,13 +18,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('organization_id')
       .eq('id', user.id)
       .single();
 
-    if (!profile?.organization_id) {
+    if (profileError || !profile?.organization_id) {
       return NextResponse.json({ message: 'Profile not found' }, { status: 404 });
     }
 

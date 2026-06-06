@@ -23,7 +23,6 @@ import type {
   SendMessageParams,
   SendMessageResult,
   WebhookHandlerResult,
-  WebhookEventData,
   MessageReceivedEvent,
   StatusUpdateEvent,
   ErrorEvent,
@@ -111,7 +110,6 @@ export class MetaInstagramProvider extends BaseChannelProvider {
   private pageId: string = '';
   private accessToken: string = '';
   private instagramAccountId: string = '';
-  private appSecret?: string;
 
   // ---------------------------------------------------------------------------
   // Lifecycle
@@ -124,7 +122,6 @@ export class MetaInstagramProvider extends BaseChannelProvider {
     this.pageId = credentials.pageId;
     this.accessToken = credentials.accessToken;
     this.instagramAccountId = credentials.instagramAccountId;
-    this.appSecret = credentials.appSecret;
 
     this.log('info', 'Meta Instagram provider initialized', {
       pageId: this.pageId,
@@ -590,22 +587,30 @@ export class MetaInstagramProvider extends BaseChannelProvider {
       url += `?${params.toString()}`;
     }
 
-    const response = await fetch(url, {
-      method,
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
-    const data = await response.json();
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+      });
 
-    if (!response.ok && !data.error) {
-      throw new Error(`Meta API request failed: ${response.status}`);
+      const data = await response.json();
+
+      if (!response.ok && !data.error) {
+        throw new Error(`Meta API request failed: ${response.status}`);
+      }
+
+      return data as T;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return data as T;
   }
 }
 
