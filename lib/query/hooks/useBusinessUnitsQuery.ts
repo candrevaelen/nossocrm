@@ -21,8 +21,6 @@ import type {
   BusinessUnitMember,
   CreateBusinessUnitInput,
   UpdateBusinessUnitInput,
-  transformBusinessUnit,
-  transformBusinessUnitToDb,
 } from '@/lib/messaging/types';
 import {
   transformBusinessUnit as transform,
@@ -69,13 +67,12 @@ export function useBusinessUnitsWithCounts() {
     queryFn: async (): Promise<BusinessUnitView[]> => {
       const supabase = getClient();
 
-      // Fetch units with member count
+      // Fetch units with member/conversation counts
       const { data: units, error: unitsError } = await supabase
         .from('business_units')
         .select(`
           *,
           member_count:business_unit_members(count),
-          channel_count:messaging_channels(count),
           conversation_count:messaging_conversations(count)
         `)
         .is('deleted_at', null)
@@ -83,13 +80,31 @@ export function useBusinessUnitsWithCounts() {
 
       if (unitsError) throw unitsError;
 
+      // Fetch non-deleted channel counts separately (embedded count includes soft-deleted rows)
+      const unitIds = (units || []).map((u) => u.id);
+      let channelCountMap: Record<string, number> = {};
+      if (unitIds.length > 0) {
+        const { data: channels } = await supabase
+          .from('messaging_channels')
+          .select('business_unit_id')
+          .is('deleted_at', null)
+          .in('business_unit_id', unitIds);
+        channelCountMap = (channels || []).reduce<Record<string, number>>(
+          (acc, ch) => {
+            acc[ch.business_unit_id] = (acc[ch.business_unit_id] || 0) + 1;
+            return acc;
+          },
+          {}
+        );
+      }
+
       // Transform and add counts
       return (units || []).map((unit) => {
         const base = transform(unit);
         return {
           ...base,
           memberCount: unit.member_count?.[0]?.count ?? 0,
-          channelCount: unit.channel_count?.[0]?.count ?? 0,
+          channelCount: channelCountMap[unit.id] ?? 0,
           openConversationCount: unit.conversation_count?.[0]?.count ?? 0,
         };
       });

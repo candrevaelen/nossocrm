@@ -109,6 +109,7 @@ function getSupabaseProjectRef(): string {
 
 const WEBHOOK_FUNCTION_MAP: Record<string, string> = {
   'z-api': 'messaging-webhook-zapi',
+  'evolution': 'messaging-webhook-evolution',
   'meta-cloud': 'messaging-webhook-meta',
   'meta': 'messaging-webhook-meta',
   'resend': 'messaging-webhook-resend',
