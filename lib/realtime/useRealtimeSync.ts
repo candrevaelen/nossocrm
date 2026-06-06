@@ -245,14 +245,36 @@ export function useRealtimeSync(
                   const alreadyInCache = cachedData?.pages.some((p) => p.messages.some((m) => m.id === messageId));
 
                   if (!alreadyInCache) {
-                    // Outbound from phone/webhook — inject into cache just like inbound
                     const newMessage = transformMessage(newRecord as unknown as DbMessagingMessage);
+
+                    // Race: Realtime INSERT fires before onSuccess (API took >0ms to respond).
+                    // The optimistic temp-msg is still in cache, so alreadyInCache=false even
+                    // though this IS our own message. Replace the temp instead of injecting new.
+                    const hasTempMessage = cachedData?.pages.some((p) =>
+                      p.messages.some((m) => typeof m.id === 'string' && m.id.startsWith('temp-'))
+                    );
+
                     queryClient.setQueryData<InfiniteData<{ messages: MessagingMessage[]; nextCursor: string | null }>>(
                       infiniteKey,
                       (old) => {
                         if (!old) return old;
                         const pages = old.pages.map((page, i) => {
                           if (i !== old.pages.length - 1) return page;
+                          if (hasTempMessage) {
+                            // Replace the first temp message — onSuccess will be a no-op afterwards
+                            let replaced = false;
+                            return {
+                              ...page,
+                              messages: page.messages.map((m) => {
+                                if (!replaced && typeof m.id === 'string' && m.id.startsWith('temp-')) {
+                                  replaced = true;
+                                  return newMessage;
+                                }
+                                return m;
+                              }),
+                            };
+                          }
+                          // No temp: outbound from phone/another device — inject like inbound
                           if (page.messages.some((m) => m.id === newMessage.id)) return page;
                           return { ...page, messages: [...page.messages, newMessage] };
                         });
@@ -260,7 +282,12 @@ export function useRealtimeSync(
                       }
                     );
                     if (DEBUG_REALTIME) {
-                      console.log('[Realtime] 📤 Outbound-from-phone injected into cache:', newMessage.id);
+                      console.log(
+                        hasTempMessage
+                          ? '[Realtime] 📤 Replaced temp optimistic with real message:'
+                          : '[Realtime] 📤 Outbound-from-phone injected into cache:',
+                        newMessage.id
+                      );
                     }
                   }
 
