@@ -607,10 +607,11 @@ export function BusinessUnitsSection() {
       setIsFormOpen(false);
       setEditingUnit(null);
     } catch (error) {
-      addToast(
-        error instanceof Error ? error.message : 'Erro ao salvar unidade',
-        'error'
-      );
+      const msg =
+        error instanceof Error
+          ? error.message
+          : (error as { message?: string })?.message ?? 'Erro ao salvar unidade';
+      addToast(msg, 'error');
     }
   };
 

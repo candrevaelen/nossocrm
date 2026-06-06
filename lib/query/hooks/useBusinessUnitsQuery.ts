@@ -191,13 +191,18 @@ export function useCreateBusinessUnit() {
       const supabase = getClient();
 
       // Get current user's org
-      const { data: profile } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('organization_id')
+        .eq('id', user.id)
         .single();
 
+      if (profileError) throw profileError;
       if (!profile?.organization_id) {
-        throw new Error('Organization not found');
+        throw new Error('Organização não encontrada no perfil do usuário');
       }
 
       const dbData = toDb(input, profile.organization_id);
